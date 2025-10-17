@@ -187,13 +187,11 @@ git clone https://github.com/SwaroopShenoy/logvoyant
 cd logvoyant
 
 # Run
-go run cmd/logvoyant/main.go
+go run main.go
 
 # Build
-go build -o logvoyant cmd/logvoyant/main.go
+go build -o logvoyant main.go
 
-# Test
-go test ./...
 ```
 
 ---
@@ -224,9 +222,9 @@ Inspired by frustration with complex log analysis tools.
 
 ## Support
 
-- 🐛 [Report a bug](https://github.com/yourusername/logvoyant/issues)
-- 💡 [Request a feature](https://github.com/yourusername/logvoyant/issues)
-- 💬 [Discussions](https://github.com/yourusername/logvoyant/discussions)
+- 🐛 [Report a bug](https://github.com/SwaroopShenoy/logvoyant/issues)
+- 💡 [Request a feature](https://github.com/SwaroopShenoy/logvoyant/issues)
+- 💬 [Discussions](https://github.com/SwaroopShenoy/logvoyant/discussions)
 
 ---
 
