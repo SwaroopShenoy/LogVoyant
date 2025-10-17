@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+*.test
+coverage.*
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs
+README.md
+DEPLOYMENT.md
+docs/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Misc
+tmp/
+temp/
+*.log

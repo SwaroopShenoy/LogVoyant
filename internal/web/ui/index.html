@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LogVoyant - Intelligent Log Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+        @keyframes pulse-slow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .pulse-slow { animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        
+        @keyframes slide-up {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .slide-up { animation: slide-up 0.3s ease-out; }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .card-hover {
+            transition: all 0.2s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 min-h-screen text-white">
+    
+    <!-- Header -->
+    <header class="border-b border-white/10 backdrop-blur-sm bg-white/5">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center font-bold text-lg">
+                    LV
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold gradient-text">LogVoyant</h1>
+                    <p class="text-xs text-gray-400">Context-Aware Analysis</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/20 border border-green-500/30">
+                    <div class="w-2 h-2 rounded-full bg-green-400 pulse-slow"></div>
+                    <span class="text-sm text-green-300">Online</span>
+                </div>
+                <button class="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 transition text-sm font-medium">
+                    + Add Source
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-6 py-8">
+        
+        <!-- Stats Row -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 slide-up">
+                <div class="text-sm text-gray-400 mb-1">Active Streams</div>
+                <div class="text-3xl font-bold" id="stream-count">0</div>
+            </div>
+            <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 slide-up" style="animation-delay: 0.1s">
+                <div class="text-sm text-gray-400 mb-1">Total Logs</div>
+                <div class="text-3xl font-bold" id="log-count">0</div>
+            </div>
+            <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 slide-up" style="animation-delay: 0.2s">
+                <div class="text-sm text-gray-400 mb-1">Error Rate</div>
+                <div class="text-3xl font-bold text-red-400" id="error-rate">0%</div>
+            </div>
+            <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 slide-up" style="animation-delay: 0.3s">
+                <div class="text-sm text-gray-400 mb-1">Unresolved Issues</div>
+                <div class="text-3xl font-bold text-yellow-400" id="unresolved-count">0</div>
+            </div>
+        </div>
+
+        <!-- Streams List -->
+        <div class="mb-6 flex items-center justify-between">
+            <h2 class="text-2xl font-bold">Log Streams</h2>
+            <div class="flex items-center gap-2">
+                <input type="text" placeholder="Search streams..." 
+                       class="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition">
+                <button class="px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Stream Cards -->
+        <div id="streams-container" class="space-y-4">
+            <!-- Empty State -->
+            <div class="text-center py-20 slide-up" id="empty-state">
+                <div class="w-20 h-20 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-10 h-10 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-xl font-semibold mb-2">No log streams yet</h3>
+                <p class="text-gray-400 mb-6">Start by adding a log source or let LogVoyant auto-discover them</p>
+                <button class="px-6 py-3 rounded-lg bg-purple-600 hover:bg-purple-700 transition font-medium">
+                    Auto-Discover Sources
+                </button>
+            </div>
+
+            <!-- Example Stream Card (will be generated via JS) -->
+            <div class="hidden stream-card bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 card-hover">
+                <div class="flex items-start justify-between mb-4">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-3 mb-2">
+                            <h3 class="text-lg font-semibold stream-name">prod/api-server</h3>
+                            <span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-300 border border-green-500/30">
+                                Active
+                            </span>
+                        </div>
+                        <p class="text-sm text-gray-400 stream-context">No previous issues</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button class="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 transition text-sm font-medium">
+                            View
+                        </button>
+                        <button class="px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition text-sm font-medium">
+                            Analyze
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-3 gap-4 pt-4 border-t border-white/10">
+                    <div>
+                        <div class="text-xs text-gray-400 mb-1">Logs/min</div>
+                        <div class="text-lg font-semibold stream-rate">0</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-400 mb-1">Error Rate</div>
+                        <div class="text-lg font-semibold text-red-400 stream-error-rate">0%</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-400 mb-1">Last Seen</div>
+                        <div class="text-lg font-semibold stream-last-seen">-</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Will be populated by backend
+        let streams = [];
+        
+        function updateStats() {
+            document.getElementById('stream-count').textContent = streams.length;
+            
+            // Calculate total logs and error rate
+            let totalLogs = 0;
+            let errorCount = 0;
+            let unresolvedCount = 0;
+            
+            streams.forEach(s => {
+                totalLogs += s.total_logs || 0;
+                errorCount += s.error_count || 0;
+            });
+            
+            document.getElementById('log-count').textContent = totalLogs.toLocaleString();
+            
+            const errorRate = totalLogs > 0 ? (errorCount / totalLogs * 100).toFixed(1) : 0;
+            document.getElementById('error-rate').textContent = errorRate + '%';
+            document.getElementById('unresolved-count').textContent = unresolvedCount;
+        }
+        
+        function renderStreams() {
+            const container = document.getElementById('streams-container');
+            const emptyState = document.getElementById('empty-state');
+            
+            if (!streams || streams.length === 0) {
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            
+            emptyState.classList.add('hidden');
+            
+            // Clear container
+            container.innerHTML = '';
+            
+            // Render each stream
+            streams.forEach((stream, index) => {
+                const card = document.createElement('div');
+                card.className = 'bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 card-hover slide-up';
+                card.style.animationDelay = `${index * 0.05}s`;
+                
+                const lastSeen = stream.last_seen ? new Date(stream.last_seen).toLocaleTimeString() : 'Never';
+                const errorRate = stream.error_rate ? (stream.error_rate * 100).toFixed(1) : '0.0';
+                
+                card.innerHTML = `
+                    <div class="flex items-start justify-between mb-4">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-3 mb-2">
+                                <h3 class="text-lg font-semibold">${escapeHtml(stream.name || stream.id)}</h3>
+                                <span class="px-2 py-0.5 rounded text-xs font-medium ${stream.active ? 'bg-green-500/20 text-green-300 border border-green-500/30' : 'bg-gray-500/20 text-gray-300 border border-gray-500/30'}">
+                                    ${stream.active ? 'Active' : 'Inactive'}
+                                </span>
+                            </div>
+                            <p class="text-sm text-gray-400">${escapeHtml(stream.context_summary || 'No previous issues')}</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <a href="/stream.html?id=${encodeURIComponent(stream.id)}" class="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 transition text-sm font-medium">
+                                View
+                            </a>
+                            <button onclick="analyzeStream('${escapeHtml(stream.id)}')" class="px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition text-sm font-medium">
+                                Analyze
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-4 pt-4 border-t border-white/10">
+                        <div>
+                            <div class="text-xs text-gray-400 mb-1">Logs/min</div>
+                            <div class="text-lg font-semibold">${stream.logs_per_min || 0}</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-gray-400 mb-1">Error Rate</div>
+                            <div class="text-lg font-semibold text-red-400">${errorRate}%</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-gray-400 mb-1">Last Seen</div>
+                            <div class="text-lg font-semibold">${lastSeen}</div>
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(card);
+            });
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function analyzeStream(streamId) {
+            window.location.href = `/stream.html?id=${encodeURIComponent(streamId)}`;
+        }
+        
+        // Fetch streams from backend
+        async function fetchStreams() {
+            try {
+                const response = await fetch('/api/streams');
+                const data = await response.json();
+                streams = data || [];
+                renderStreams();
+                updateStats();
+            } catch (err) {
+                console.error('Failed to fetch streams:', err);
+            }
+        }
+        
+        // Poll for updates
+        setInterval(fetchStreams, 5000);
+        fetchStreams();
+    </script>
+</body>
+</html>

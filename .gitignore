@@ -1,0 +1,9 @@
+# Add this to .gitignore in root
+*.db
+.DS_Store
+*.log
+dist/
+*.exe
+.vscode/
+.idea/
+temp.md

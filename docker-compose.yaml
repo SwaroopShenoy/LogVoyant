@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  logvoyant:
+    build: .
+    image: logvoyant:latest
+    container_name: logvoyant
+    ports:
+      - "3100:3100"
+    volumes:
+      # Mount host log directories (read-only)
+      - /var/log:/host/var/log:ro
+      - /var/lib/docker/containers:/host/docker/containers:ro
+      
+      # Persistent database
+      - logvoyant-data:/data
+      
+      # Optional: mount custom log files
+      # - ./mylogs:/logs:ro
+    
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+    
+    restart: unless-stopped
+    
+    # Optional: resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+volumes:
+  logvoyant-data:

@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stream View - LogVoyant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .log-line { font-family: 'Monaco', 'Menlo', monospace; font-size: 13px; }
+        .log-ERROR { color: #f87171; }
+        .log-WARN { color: #fbbf24; }
+        .log-INFO { color: #60a5fa; }
+        .log-DEBUG { color: #9ca3af; }
+        
+        #logs-container {
+            height: calc(100vh - 280px);
+            overflow-y: auto;
+        }
+        
+        #logs-container::-webkit-scrollbar { width: 8px; }
+        #logs-container::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+        #logs-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 min-h-screen text-white">
+    
+    <!-- Header -->
+    <header class="border-b border-white/10 backdrop-blur-sm bg-white/5">
+        <div class="max-w-full mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="/" class="text-gray-400 hover:text-white transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                    </svg>
+                </a>
+                <div>
+                    <h1 class="text-xl font-bold" id="stream-title">prod/api-server</h1>
+                    <p class="text-xs text-gray-400">Real-time log stream</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/20 border border-green-500/30">
+                    <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+                    <span class="text-sm text-green-300">Live</span>
+                </div>
+                <button id="analyze-btn" class="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 transition text-sm font-medium">
+                    ✨ Analyze Now
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Context Panel -->
+    <div class="max-w-full mx-auto px-6 py-4 border-b border-white/10 bg-white/5">
+        <div class="flex items-start gap-4">
+            <div class="flex-1">
+                <h3 class="text-sm font-semibold mb-2 text-gray-300">Stream Context</h3>
+                <div id="context-summary" class="text-sm text-gray-400">
+                    No previous analyses available
+                </div>
+            </div>
+            <button class="text-sm text-purple-400 hover:text-purple-300 transition">
+                View History →
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Split View -->
+    <div class="flex h-[calc(100vh-180px)]">
+        
+        <!-- Left: Live Logs -->
+        <div class="flex-1 border-r border-white/10 flex flex-col">
+            <div class="px-6 py-3 border-b border-white/10 bg-white/5 flex items-center justify-between">
+                <h2 class="font-semibold">Live Logs</h2>
+                <div class="flex items-center gap-3">
+                    <select class="px-3 py-1.5 rounded bg-white/5 border border-white/10 text-sm">
+                        <option>All Levels</option>
+                        <option>ERROR</option>
+                        <option>WARN</option>
+                        <option>INFO</option>
+                    </select>
+                    <button class="px-3 py-1.5 rounded bg-white/5 border border-white/10 hover:bg-white/10 transition text-sm">
+                        Pause
+                    </button>
+                    <button class="px-3 py-1.5 rounded bg-white/5 border border-white/10 hover:bg-white/10 transition text-sm">
+                        Clear
+                    </button>
+                </div>
+            </div>
+            
+            <div id="logs-container" class="flex-1 overflow-auto p-4 bg-black/20">
+                <!-- Logs will be streamed here -->
+                <div class="text-gray-500 text-sm">Connecting to stream...</div>
+            </div>
+        </div>
+
+        <!-- Right: Analysis -->
+        <div class="w-[500px] flex flex-col bg-white/5">
+            <div class="px-6 py-3 border-b border-white/10 flex items-center justify-between">
+                <h2 class="font-semibold">AI Analysis</h2>
+                <span class="text-xs text-gray-400" id="analysis-timestamp">-</span>
+            </div>
+            
+            <div class="flex-1 overflow-auto p-6">
+                <div id="analysis-content" class="space-y-4">
+                    <div class="text-center py-12 text-gray-500">
+                        <svg class="w-16 h-16 mx-auto mb-4 text-purple-400 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                        </svg>
+                        <p class="text-sm">Click "Analyze Now" to generate insights</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const streamId = urlParams.get('id') || 'default';
+        
+        console.log('Stream ID:', streamId);
+        
+        let ws = null;
+        
+        // Update page title
+        document.getElementById('stream-title').textContent = streamId.split(':').pop();
+        
+        // WebSocket for live logs
+        function connectWebSocket() {
+            const wsUrl = `ws://${window.location.host}/ws/streams/${encodeURIComponent(streamId)}`;
+            console.log('Connecting to:', wsUrl);
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                document.getElementById('logs-container').innerHTML = '<div class="text-gray-400 text-sm">Connected. Waiting for logs...</div>';
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const log = JSON.parse(event.data);
+                    appendLog(log);
+                } catch (e) {
+                    console.error('Failed to parse log:', e);
+                }
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                document.getElementById('logs-container').innerHTML = '<div class="text-red-400 text-sm">Connection error. Check console.</div>';
+            };
+            
+            ws.onclose = () => {
+                console.log('WebSocket closed, reconnecting...');
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+        
+        function appendLog(log) {
+            const container = document.getElementById('logs-container');
+            const line = document.createElement('div');
+            line.className = `log-line log-${log.level} py-1 hover:bg-white/5 px-2 rounded`;
+            
+            const timestamp = new Date(log.timestamp).toLocaleTimeString();
+            line.innerHTML = `
+                <span class="text-gray-500">${timestamp}</span>
+                <span class="font-semibold ml-2">[${log.level}]</span>
+                <span class="ml-2">${escapeHtml(log.message)}</span>
+            `;
+            
+            container.appendChild(line);
+            container.scrollTop = container.scrollHeight;
+            
+            // Keep only last 500 lines
+            while (container.children.length > 500) {
+                container.removeChild(container.firstChild);
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Analyze button
+        document.getElementById('analyze-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('analyze-btn');
+            const content = document.getElementById('analysis-content');
+            
+            btn.disabled = true;
+            btn.textContent = '⏳ Analyzing...';
+            
+            content.innerHTML = `
+                <div class="flex items-center gap-3 text-purple-400">
+                    <svg class="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Running context-aware analysis...</span>
+                </div>
+            `;
+            
+            try {
+                const response = await fetch(`/api/streams/${streamId}/analyze`, {
+                    method: 'POST'
+                });
+                const analysis = await response.json();
+                displayAnalysis(analysis);
+            } catch (err) {
+                content.innerHTML = `<div class="text-red-400">Analysis failed: ${err.message}</div>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '✨ Analyze Now';
+            }
+        });
+        
+        function displayAnalysis(analysis) {
+            const content = document.getElementById('analysis-content');
+            const severityColors = {
+                'P0': 'red',
+                'P1': 'orange',
+                'P2': 'yellow',
+                'P3': 'blue'
+            };
+            const color = severityColors[analysis.severity] || 'gray';
+            
+            content.innerHTML = `
+                <div class="space-y-4">
+                    <div class="flex items-center gap-2">
+                        <span class="px-2 py-1 rounded text-xs font-medium bg-${color}-500/20 text-${color}-300 border border-${color}-500/30">
+                            ${analysis.severity}
+                        </span>
+                        <span class="text-xs text-gray-400">${new Date(analysis.timestamp).toLocaleString()}</span>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-sm font-semibold text-gray-300 mb-2">Summary</h3>
+                        <p class="text-sm text-gray-400">${analysis.summary}</p>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-sm font-semibold text-gray-300 mb-2">Root Cause</h3>
+                        <p class="text-sm text-gray-400">${analysis.root_cause}</p>
+                    </div>
+                    
+                    ${analysis.fixes ? `
+                        <div>
+                            <h3 class="text-sm font-semibold text-gray-300 mb-2">Suggested Fixes</h3>
+                            <ul class="text-sm text-gray-400 space-y-1 list-disc list-inside">
+                                ${analysis.fixes.map(fix => `<li>${fix}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            
+            document.getElementById('analysis-timestamp').textContent = new Date().toLocaleTimeString();
+        }
+        
+        // Initialize
+        connectWebSocket();
+        
+        // Load stream context
+        fetch(`/api/streams/${streamId}/context`)
+            .then(r => r.json())
+            .then(ctx => {
+                if (ctx.analyses && ctx.analyses.length > 0) {
+                    const latest = ctx.analyses[ctx.analyses.length - 1];
+                    document.getElementById('context-summary').textContent = 
+                        `Previous: ${latest.summary} (${latest.severity})`;
+                }
+            })
+            .catch(err => console.error('Failed to load context:', err));
+    </script>
+</body>
+</html>
