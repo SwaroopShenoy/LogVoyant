@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"logvoyant/internal/storage"
 )
@@ -45,9 +46,9 @@ func NewGroqClient(apiKey string) *GroqClient {
 
 func (g *GroqClient) Analyze(prompt string) (*storage.Analysis, error) {
 	reqBody := groqRequest{
-		Model: "llama-3.3-70b-versatile", // Fast, free tier friendly
+		Model: "llama-3.3-70b-versatile",
 		Messages: []groqMessage{
-			{Role: "system", Content: "You are an expert log analyzer. Analyze logs and respond in valid JSON format only."},
+			{Role: "system", Content: "You are an expert log analyzer. Analyze logs and respond ONLY with valid JSON. No markdown, no code blocks, just pure JSON."},
 			{Role: "user", Content: prompt},
 		},
 		Temp: 0.3,
@@ -86,11 +87,18 @@ func (g *GroqClient) Analyze(prompt string) (*storage.Analysis, error) {
 		return nil, fmt.Errorf("no response from groq")
 	}
 
-	// Parse JSON response
 	content := groqResp.Choices[0].Message.Content
+	
+	// Clean up markdown code blocks if present
+	content = strings.TrimSpace(content)
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	content = strings.TrimSpace(content)
+	
 	var analysis storage.Analysis
 	if err := json.Unmarshal([]byte(content), &analysis); err != nil {
-		return nil, fmt.Errorf("failed to parse analysis: %w", err)
+		return nil, fmt.Errorf("failed to parse analysis JSON: %w\nContent: %s", err, content)
 	}
 
 	return &analysis, nil

@@ -43,19 +43,20 @@ func (a *Analyzer) Analyze(streamID string, logs []storage.LogLine) (*storage.An
 		return nil, err
 	}
 
-	// 2. Build enriched prompt with history
-	prompt := a.buildPrompt(streamID, logs, ctx)
-
-	// 3. Get analysis (LLM or fallback)
+	// 2. Try LLM first if available
 	var analysis *storage.Analysis
 	if a.llm != nil {
+		// Build enriched prompt with history
+		prompt := a.buildPrompt(streamID, logs, ctx)
+		
 		analysis, err = a.llm.Analyze(prompt)
 		if err != nil {
-			// Fallback to pattern matching if LLM fails
+			// LLM failed - fallback to pattern matching
+			fmt.Printf("LLM analysis failed (%v), using fallback\n", err)
 			analysis = a.fallback.Analyze(logs, ctx)
 		}
 	} else {
-		// No LLM configured, use fallback
+		// No LLM configured, use fallback directly
 		analysis = a.fallback.Analyze(logs, ctx)
 	}
 

@@ -1,4 +1,5 @@
-<!DOCTYPE html>
+document.getElementById('analysis-content').innerHTML = `
+                    <div><span class="px-2 py-1 rounded text-xs font-medium bg-${data.severity === 'INFO' ? 'green' : data.severity === 'P0' ? 'red' : data.severity<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -74,16 +75,17 @@
             <div class="px-6 py-3 border-b border-white/10 bg-white/5 flex items-center justify-between">
                 <h2 class="font-semibold">Live Logs</h2>
                 <div class="flex items-center gap-3">
-                    <select class="px-3 py-1.5 rounded bg-white/5 border border-white/10 text-sm">
-                        <option>All Levels</option>
-                        <option>ERROR</option>
-                        <option>WARN</option>
-                        <option>INFO</option>
+                    <select id="level-filter" class="px-3 py-1.5 rounded bg-slate-800 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500">
+                        <option value="all">All Levels</option>
+                        <option value="error">ERROR</option>
+                        <option value="warn">WARN</option>
+                        <option value="info">INFO</option>
+                        <option value="debug">DEBUG</option>
                     </select>
-                    <button class="px-3 py-1.5 rounded bg-white/5 border border-white/10 hover:bg-white/10 transition text-sm">
+                    <button id="pause-btn" class="px-3 py-1.5 rounded bg-white/5 border border-white/10 hover:bg-white/10 transition text-sm">
                         Pause
                     </button>
-                    <button class="px-3 py-1.5 rounded bg-white/5 border border-white/10 hover:bg-white/10 transition text-sm">
+                    <button id="clear-btn" class="px-3 py-1.5 rounded bg-white/5 border border-white/10 hover:bg-white/10 transition text-sm">
                         Clear
                     </button>
                 </div>
@@ -160,18 +162,37 @@
         
         function appendLog(log) {
             const container = document.getElementById('logs-container');
+            
+            // Remove placeholder message on first log
+            const firstChild = container.firstElementChild;
+            if (firstChild && firstChild.textContent.includes('Loading') || firstChild && firstChild.textContent.includes('Waiting')) {
+                container.innerHTML = '';
+            }
+            
             const line = document.createElement('div');
             line.className = `log-line log-${log.level} py-1 hover:bg-white/5 px-2 rounded`;
+            line.setAttribute('data-level', log.level ? log.level.toLowerCase() : 'info');
             
             const timestamp = new Date(log.timestamp).toLocaleTimeString();
+            const level = log.level || 'INFO';
+            const message = log.message || log.raw || '';
+            
             line.innerHTML = `
                 <span class="text-gray-500">${timestamp}</span>
-                <span class="font-semibold ml-2">[${log.level}]</span>
-                <span class="ml-2">${escapeHtml(log.message)}</span>
+                <span class="font-semibold ml-2">[${level}]</span>
+                <span class="ml-2">${escapeHtml(message)}</span>
             `;
             
+            // Apply current filter
+            if (levelFilter !== 'all' && log.level && log.level.toLowerCase() !== levelFilter) {
+                line.style.display = 'none';
+            }
+            
             container.appendChild(line);
-            container.scrollTop = container.scrollHeight;
+            
+            if (!isPaused) {
+                container.scrollTop = container.scrollHeight;
+            }
             
             // Keep only last 500 lines
             while (container.children.length > 500) {
@@ -204,9 +225,12 @@
             `;
             
             try {
-                const response = await fetch(`/api/streams/${streamId}/analyze`, {
+                const response = await fetch(`/api/streams/${encodeURIComponent(streamId)}/analyze`, {
                     method: 'POST'
                 });
+                
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
                 const analysis = await response.json();
                 displayAnalysis(analysis);
             } catch (err) {
@@ -264,8 +288,11 @@
         connectWebSocket();
         
         // Load stream context
-        fetch(`/api/streams/${streamId}/context`)
-            .then(r => r.json())
+        fetch(`/api/streams/${encodeURIComponent(streamId)}/context`)
+            .then(r => {
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                return r.json();
+            })
             .then(ctx => {
                 if (ctx.analyses && ctx.analyses.length > 0) {
                     const latest = ctx.analyses[ctx.analyses.length - 1];
@@ -273,7 +300,10 @@
                         `Previous: ${latest.summary} (${latest.severity})`;
                 }
             })
-            .catch(err => console.error('Failed to load context:', err));
+            .catch(err => {
+                console.error('Failed to load context:', err);
+                document.getElementById('context-summary').textContent = 'No previous analyses';
+            });
     </script>
 </body>
 </html>

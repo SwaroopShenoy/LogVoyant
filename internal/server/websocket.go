@@ -3,6 +3,7 @@ package server
 import (
 	"log"
 	"net/http"
+	"net/url"
 	"sync"
 
 	"github.com/go-chi/chi/v5"
@@ -18,7 +19,7 @@ var upgrader = websocket.Upgrader{
 }
 
 type WebSocketHub struct {
-	clients    map[string]map[*websocket.Conn]bool // streamID -> connections
+	clients    map[string]map[*websocket.Conn]bool
 	broadcast  chan LogBroadcast
 	register   chan *Client
 	unregister chan *Client
@@ -93,6 +94,14 @@ func (h *WebSocketHub) BroadcastLog(streamID string, log storage.LogLine) {
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	streamID := chi.URLParam(r, "id")
+	
+	decodedStreamID, err := url.QueryUnescape(streamID)
+	if err != nil {
+		log.Printf("Failed to decode stream ID: %v", err)
+		decodedStreamID = streamID
+	}
+	
+	log.Printf("WebSocket connection for stream: %s (decoded: %s)", streamID, decodedStreamID)
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -100,18 +109,24 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &Client{conn: conn, streamID: streamID}
+	client := &Client{conn: conn, streamID: decodedStreamID}
 	s.hub.register <- client
 
-	// Send recent logs on connect
-	logs, err := s.config.Storage.GetLogs(streamID, storage.GetLogsOptions{Limit: 100})
-	if err == nil {
-		for _, log := range logs {
-			conn.WriteJSON(log)
+	logs, err := s.config.Storage.GetLogs(decodedStreamID, storage.GetLogsOptions{Limit: 100})
+	log.Printf("Attempting to fetch logs for stream: %s, found: %d, err: %v", decodedStreamID, len(logs), err)
+	
+	if err == nil && len(logs) > 0 {
+		log.Printf("Sending %d historical logs to WebSocket client", len(logs))
+		for _, logLine := range logs {
+			if err := conn.WriteJSON(logLine); err != nil {
+				log.Printf("Failed to send log: %v", err)
+				break
+			}
 		}
+	} else {
+		log.Printf("No logs found for stream: %s (err: %v)", decodedStreamID, err)
 	}
 
-	// Keep connection alive
 	for {
 		if _, _, err := conn.ReadMessage(); err != nil {
 			s.hub.unregister <- client

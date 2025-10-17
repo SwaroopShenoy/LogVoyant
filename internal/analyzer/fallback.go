@@ -127,18 +127,30 @@ func NewFallbackAnalyzer() *FallbackAnalyzer {
 }
 
 func (f *FallbackAnalyzer) Analyze(logs []storage.LogLine, ctx *storage.StreamContext) *storage.Analysis {
-	// Count errors and collect keywords
+	// Count errors by level
 	errorCount := 0
+	warnCount := 0
+	fatalCount := 0
 	allMessages := make([]string, 0)
+	errorMessages := make([]string, 0)
 	
 	for _, log := range logs {
-		if log.Level == "ERROR" || log.Level == "FATAL" {
+		msgLower := strings.ToLower(log.Message)
+		allMessages = append(allMessages, msgLower)
+		
+		switch log.Level {
+		case "ERROR":
 			errorCount++
+			errorMessages = append(errorMessages, msgLower)
+		case "FATAL":
+			fatalCount++
+			errorMessages = append(errorMessages, msgLower)
+		case "WARN":
+			warnCount++
 		}
-		allMessages = append(allMessages, strings.ToLower(log.Message))
 	}
 
-	// Find matching pattern
+	// Find matching patterns
 	var matchedPattern *ErrorPattern
 	maxMatches := 0
 
@@ -146,8 +158,9 @@ func (f *FallbackAnalyzer) Analyze(logs []storage.LogLine, ctx *storage.StreamCo
 		pattern := &f.patterns[i]
 		matches := 0
 		for _, keyword := range pattern.Keywords {
-			for _, msg := range allMessages {
-				if strings.Contains(msg, strings.ToLower(keyword)) {
+			keywordLower := strings.ToLower(keyword)
+			for _, msg := range errorMessages {
+				if strings.Contains(msg, keywordLower) {
 					matches++
 					break
 				}
@@ -161,23 +174,54 @@ func (f *FallbackAnalyzer) Analyze(logs []storage.LogLine, ctx *storage.StreamCo
 
 	// Build analysis
 	analysis := &storage.Analysis{
-		Severity: "P3", // Default
+		Severity: "P3",
+	}
+
+	// Determine severity based on error types
+	if fatalCount > 0 {
+		analysis.Severity = "P0"
+	} else if errorCount > 50 {
+		analysis.Severity = "P0"
+	} else if errorCount > 10 {
+		analysis.Severity = "P1"
+	} else if errorCount > 0 {
+		analysis.Severity = "P2"
+	} else if warnCount > 20 {
+		analysis.Severity = "P2"
 	}
 
 	if matchedPattern != nil {
-		analysis.Summary = fmt.Sprintf("Detected %s issue (%d errors in logs)", 
-			matchedPattern.Keywords[0], errorCount)
+		// Use matched pattern
+		analysis.Summary = fmt.Sprintf("Detected %s errors (%d errors, %d warnings)", 
+			matchedPattern.Keywords[0], errorCount, warnCount)
 		analysis.RootCause = matchedPattern.RootCause
 		analysis.Fixes = matchedPattern.Fixes
-		analysis.Severity = matchedPattern.Severity
+		
+		// Override severity if pattern has a higher priority
+		if matchedPattern.Severity == "P0" && (analysis.Severity == "P1" || analysis.Severity == "P2" || analysis.Severity == "P3") {
+			analysis.Severity = "P0"
+		} else if matchedPattern.Severity == "P1" && (analysis.Severity == "P2" || analysis.Severity == "P3") {
+			analysis.Severity = "P1"
+		}
 	} else {
-		// Generic analysis
-		analysis.Summary = fmt.Sprintf("Generic errors detected (%d errors)", errorCount)
-		analysis.RootCause = "Unable to identify specific pattern. Manual investigation recommended."
+		// Generic analysis - try to extract common error phrases
+		errorPhrases := f.extractCommonPhrases(errorMessages)
+		
+		if len(errorPhrases) > 0 {
+			analysis.Summary = fmt.Sprintf("Multiple errors detected: %s (%d errors, %d warnings)", 
+				strings.Join(errorPhrases[:min(2, len(errorPhrases))], ", "), errorCount, warnCount)
+			analysis.RootCause = fmt.Sprintf("Recurring issues detected: %s. Manual investigation recommended to identify root cause.", 
+				strings.Join(errorPhrases, ", "))
+		} else {
+			analysis.Summary = fmt.Sprintf("Generic errors detected (%d errors, %d warnings)", errorCount, warnCount)
+			analysis.RootCause = "Unable to identify specific pattern from error messages. Review full error logs for stack traces and context."
+		}
+		
 		analysis.Fixes = []string{
-			"Review full error logs for detailed stack traces",
+			"Review full error logs with stack traces for detailed context",
 			"Check recent deployments or configuration changes",
-			"Consult service documentation for common issues",
+			"Verify all required services and dependencies are running",
+			"Check application health endpoints and metrics",
 		}
 	}
 
@@ -185,9 +229,79 @@ func (f *FallbackAnalyzer) Analyze(logs []storage.LogLine, ctx *storage.StreamCo
 	if len(ctx.Analyses) > 0 {
 		latest := ctx.Analyses[len(ctx.Analyses)-1]
 		if !latest.Resolved {
-			analysis.Context = fmt.Sprintf("May be related to previous unresolved issue: %s", latest.Summary)
+			analysis.Context = fmt.Sprintf("May be related to previous unresolved issue: %s (%s)", latest.Summary, latest.Severity)
 		}
 	}
 
 	return analysis
+}
+
+// extractCommonPhrases finds commonly repeated phrases in error messages
+func (f *FallbackAnalyzer) extractCommonPhrases(messages []string) []string {
+	if len(messages) == 0 {
+		return []string{}
+	}
+	
+	// Count word frequencies
+	wordCount := make(map[string]int)
+	for _, msg := range messages {
+		words := strings.Fields(msg)
+		for _, word := range words {
+			// Skip common words
+			if len(word) > 3 && !isCommonWord(word) {
+				wordCount[word]++
+			}
+		}
+	}
+	
+	// Find top repeated words
+	type wordFreq struct {
+		word  string
+		count int
+	}
+	var frequencies []wordFreq
+	for word, count := range wordCount {
+		if count > 1 { // Only words that appear multiple times
+			frequencies = append(frequencies, wordFreq{word, count})
+		}
+	}
+	
+	// Sort by frequency
+	if len(frequencies) == 0 {
+		return []string{}
+	}
+	
+	// Simple bubble sort for top 3
+	for i := 0; i < min(3, len(frequencies)); i++ {
+		for j := i + 1; j < len(frequencies); j++ {
+			if frequencies[j].count > frequencies[i].count {
+				frequencies[i], frequencies[j] = frequencies[j], frequencies[i]
+			}
+		}
+	}
+	
+	// Return top phrases
+	result := []string{}
+	for i := 0; i < min(3, len(frequencies)); i++ {
+		result = append(result, frequencies[i].word)
+	}
+	return result
+}
+
+func isCommonWord(word string) bool {
+	common := []string{"error", "failed", "warning", "info", "the", "and", "for", "from", "with", "that", "this"}
+	wordLower := strings.ToLower(word)
+	for _, c := range common {
+		if wordLower == c {
+			return true
+		}
+	}
+	return false
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

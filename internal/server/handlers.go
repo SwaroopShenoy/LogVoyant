@@ -2,7 +2,10 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -67,34 +70,50 @@ func (s *Server) handleGetLogs(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 	streamID := chi.URLParam(r, "id")
+	
+	// Decode URL encoding
+	decodedStreamID, err := url.QueryUnescape(streamID)
+	if err != nil {
+		decodedStreamID = streamID
+	}
+	
+	log.Printf("Analysis requested for stream: %s (decoded: %s)", streamID, decodedStreamID)
 
 	// Get recent logs
-	logs, err := s.config.Storage.GetLogs(streamID, storage.GetLogsOptions{Limit: 100})
+	logs, err := s.config.Storage.GetLogs(decodedStreamID, storage.GetLogsOptions{Limit: 100})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("Failed to get logs: %v", err)
+		respondJSON(w, map[string]string{"error": fmt.Sprintf("failed to get logs: %v", err)})
 		return
 	}
 
 	if len(logs) == 0 {
-		http.Error(w, "no logs to analyze", http.StatusBadRequest)
+		log.Printf("No logs found for stream: %s", decodedStreamID)
+		respondJSON(w, map[string]string{"error": "no logs to analyze"})
 		return
 	}
+	
+	log.Printf("Found %d logs for analysis", len(logs))
 
 	// Run analysis
-	analysis, err := s.analyzer.Analyze(streamID, logs)
+	analysis, err := s.analyzer.Analyze(decodedStreamID, logs)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("Analysis failed: %v", err)
+		respondJSON(w, map[string]string{"error": fmt.Sprintf("analysis failed: %v", err)})
 		return
 	}
+	
+	log.Printf("Analysis completed: %s (%s)", analysis.Summary, analysis.Severity)
 
 	// Store analysis
 	if err := s.config.Storage.StoreAnalysis(analysis); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("Failed to store analysis: %v", err)
+		respondJSON(w, map[string]string{"error": fmt.Sprintf("failed to store analysis: %v", err)})
 		return
 	}
 
 	// Update context with new analysis summary
-	ctx, _ := s.config.Storage.GetContext(streamID)
+	ctx, _ := s.config.Storage.GetContext(decodedStreamID)
 	ctx.Analyses = append(ctx.Analyses, storage.AnalysisSummary{
 		Timestamp: analysis.Timestamp,
 		Summary:   analysis.Summary,
@@ -102,7 +121,7 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		Severity:  analysis.Severity,
 		Resolved:  false,
 	})
-	s.config.Storage.UpdateContext(streamID, ctx)
+	s.config.Storage.UpdateContext(decodedStreamID, ctx)
 
 	respondJSON(w, analysis)
 }
@@ -155,5 +174,7 @@ func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
 
 func respondJSON(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		http.Error(w, fmt.Sprintf("failed to encode JSON: %v", err), http.StatusInternalServerError)
+	}
 }
