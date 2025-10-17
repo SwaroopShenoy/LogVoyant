@@ -65,7 +65,7 @@ logvoyant start
 curl -sSL https://logvoyant.sh | sh
 
 # Or download from releases
-# https://github.com/yourusername/logvoyant/releases
+# https://github.com/SwaroopShenoy/logvoyant/releases
 ```
 
 ### Run
@@ -132,12 +132,12 @@ Analysis 2 (11:00 AM): "Still timing out - network policy issue"
 
 ## Roadmap
 
-### v0.1 (MVP)
+### v0.1 (MVP) - In-progress
 - [x] Web UI
 - [x] Auto-discovery (kubectl, docker, files)
 - [x] Pattern matching
-- [x] LLM integration (Groq)
-- [x] Context tracking
+- [ ] LLM integration (Groq)
+- [ ] Context tracking
 
 ### v0.2
 - [ ] TUI mode (terminal UI)
@@ -147,7 +147,7 @@ Analysis 2 (11:00 AM): "Still timing out - network policy issue"
 
 ### v0.3
 - [ ] Valkey/Redis backend (persistent storage)
-- [ ] Slack notifications
+- [ ] Notifications
 - [ ] Custom pattern library
 - [ ] Multi-cluster support
 
